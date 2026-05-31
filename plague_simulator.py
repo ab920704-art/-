@@ -25,7 +25,7 @@ class Country:
         self.population = population
         self.infected = 0
         self.dead = 0
-        self.recovered = 0          # 新增：康复人数
+        self.recovered = 0          # 新增：康復人數
         self.lockdown = False
 
     @property
@@ -38,7 +38,7 @@ class Disease:
         self.infectivity = 0.15
         self.severity = 0.05
         self.lethality = 0.01
-        self.recovery_rate = 0.02   # 新增：康复率，每天 2% 的感染者会康复
+        self.recovery_rate = 0.02   # 新增：康復率，每天 2% 的感染者會康復
         self.points = 0
 
     def upgrade_infectivity(self):
@@ -63,7 +63,7 @@ class Disease:
         return False
 
     def upgrade_recovery_resistance(self):
-        # 新增：降低康复率的升级
+        # 新增：降低康復率的升級
         if self.points >= 6:
             self.points -= 6
             self.recovery_rate = max(0, self.recovery_rate - 0.01)  # 最低降到 0%
@@ -104,28 +104,30 @@ class Game:
 
                 multiplier = 0.5 if c.lockdown else 1.0
 
-                # 新增感染计算
+                # 新增感染計算
                 new_infections = int(c.infected * self.disease.infectivity * multiplier)
                 new_infections = min(new_infections, c.healthy)
 
-                # 新增死亡计算
+                # 新增死亡計算
                 new_deaths = int(c.infected * self.disease.lethality)
                 new_deaths = min(new_deaths, c.infected)
 
-                # 新增：康复计算
-                # 康复率受到严重程度的影响：越严重的病，康复越慢
+                # 新增：康復計算
+                # 康復率受到嚴重程度的影響：越嚴重的病，康復越慢
                 recovery_factor = max(0.1, 1.0 - self.disease.severity * 5)
                 new_recoveries = int(c.infected * self.disease.recovery_rate * recovery_factor)
                 new_recoveries = min(new_recoveries, c.infected - new_deaths)
 
-                # 更新感染人数：原有感染 + 新增感染 - 新增死亡 - 新增康复
+                # 更新感染人數：原有感染 + 新增感染 - 新增死亡 - 新增康復
                 c.infected = max(0, c.infected + new_infections - new_deaths - new_recoveries)
                 c.dead += new_deaths
                 c.recovered += new_recoveries
 
-                # DNA 点数计算：既要靠感染获得，也要靠死亡获得
-                self.disease.points += max(1, new_infections // 100000)
-                self.disease.points += max(1, new_deaths // 50000)  # 新增：死亡也给点数
+                # DNA 點數計算 - 方案一：平衡的點數系統
+                # 每 50 萬人感染 = 1 點
+                # 每 10 萬人死亡 = 1 點
+                self.disease.points += new_infections // 500000
+                self.disease.points += new_deaths // 100000
 
             total_infected += c.infected
             total_dead += c.dead
@@ -137,7 +139,7 @@ class Game:
                 "infectivity",
                 "severity",
                 "lethality",
-                "recovery_resistance",  # 新增变异类型
+                "recovery_resistance",  # 新增變異類型
                 "incubation"
             ])
 
@@ -151,7 +153,7 @@ class Game:
                 self.disease.lethality += 0.003
 
             elif mutation_type == "recovery_resistance":
-                # 新增：变异降低康复率
+                # 新增：變異降低康復率
                 self.disease.recovery_rate = max(0, self.disease.recovery_rate - 0.005)
 
             elif mutation_type == "incubation":
