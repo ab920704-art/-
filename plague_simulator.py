@@ -5,7 +5,8 @@ A complete Python project inspired by Plague Inc.
 Features:
 - Country-based infection simulation
 - Multiple disease attributes (infectivity, severity, lethality)
-- Recovery system (people can recover from infection)
+- Recovery system (people can recover from infection with random variations)
+- Inter-country transmission (virus spreads between countries)
 - Mutation events
 - Cure progress system
 - Win/Lose conditions
@@ -112,10 +113,12 @@ class Game:
                 new_deaths = int(c.infected * self.disease.lethality)
                 new_deaths = min(new_deaths, c.infected)
 
-                # 新增：康復計算
+                # 新增：康復計算（隨機因子）
                 # 康復率受到嚴重程度的影響：越嚴重的病，康復越慢
                 recovery_factor = max(0.1, 1.0 - self.disease.severity * 5)
-                new_recoveries = int(c.infected * self.disease.recovery_rate * recovery_factor)
+                # 新增隨機性：0.5 到 1.0 之間的隨機倍數
+                random_recovery_multiplier = random.uniform(0.5, 1.0)
+                new_recoveries = int(c.infected * self.disease.recovery_rate * recovery_factor * random_recovery_multiplier)
                 new_recoveries = min(new_recoveries, c.infected - new_deaths)
 
                 # 更新感染人數：原有感染 + 新增感染 - 新增死亡 - 新增康復
@@ -132,6 +135,9 @@ class Game:
             total_infected += c.infected
             total_dead += c.dead
             total_recovered += c.recovered
+
+        # 新增：方案 B - 基於感染程度的國家間傳播
+        self.spread_to_other_countries()
 
         # mutation event
         if random.random() < 0.08:
@@ -167,6 +173,32 @@ class Game:
         self.cure = max(0, min(100, self.cure))
 
         return total_infected, total_dead, total_recovered
+
+    def spread_to_other_countries(self):
+        """
+        方案 B：基於感染程度的國家間傳播
+        感染人數越多，傳播到其他國家的概率越高
+        """
+        for c in self.countries:
+            if c.infected > 1000:  # 感染者 > 1000 人時才會傳播
+                # 計算傳播概率：感染人數占該國人口的比例
+                # 感染比例越高，傳播概率越高（最多 50%）
+                infection_ratio = c.infected / c.population
+                spread_chance = min(0.5, infection_ratio * 100)
+
+                # 隨機選擇其他國家
+                other_countries = [other for other in self.countries if other != c]
+
+                for other in other_countries:
+                    # 如果該國還沒有感染者，才會被傳染
+                    if other.infected == 0 and random.random() < spread_chance:
+                        # 傳入 10-50 個感染者
+                        other.infected = random.randint(10, 50)
+
+                    # 如果該國已有感染者，概率較低地傳播更多病例
+                    elif other.infected > 0 and random.random() < spread_chance * 0.3:
+                        # 額外傳入 5-20 個感染者
+                        other.infected += random.randint(5, 20)
 
     def is_win(self):
         return all(c.healthy == 0 and c.infected == 0 for c in self.countries)
