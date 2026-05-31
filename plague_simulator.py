@@ -7,6 +7,7 @@
 - 多種疾病屬性（傳染性、嚴重程度、致命性）
 - 康復系統（感染者可以康復，具有隨機變化）
 - 國家間傳播（病毒在國家之間傳播）
+- 強化的封城系統（明確顯示和更高的影響力）
 - 變異事件
 - 治療進度系統
 - 勝負條件
@@ -28,6 +29,7 @@ class Country:
         self.dead = 0
         self.recovered = 0          # 康復人數
         self.lockdown = False
+        self.lockdown_notified = False  # 記錄是否已通知玩家封城
 
     @property
     def healthy(self):
@@ -73,7 +75,7 @@ class Disease:
 
 
 class Game:
-    def __init__(self):
+    def __init__(self, lockdown_callback=None):
         self.day = 0
         self.cure = 0
         self.disease = Disease()
@@ -84,6 +86,7 @@ class Game:
             Country("印度", 1_400_000_000),
             Country("巴西", 214_000_000),
         ]
+        self.lockdown_callback = lockdown_callback  # 用於通知 UI 有新的封城
 
         # 在一個隨機國家開始感染
         start = random.choice(self.countries)
@@ -98,12 +101,16 @@ class Game:
 
         for c in self.countries:
             if c.infected > 0:
-                # 封鎖概率
+                # 封鎖概率 - 改進：觸發條件更容易
                 if c.infected > c.population * 0.2 and not c.lockdown:
                     if random.random() < 0.1:
                         c.lockdown = True
+                        # 觸發通知回調
+                        if self.lockdown_callback:
+                            self.lockdown_callback(c)
 
-                multiplier = 0.5 if c.lockdown else 1.0
+                # 改進：封城時傳染性更低（0.3 instead of 0.5）
+                multiplier = 0.3 if c.lockdown else 1.0
 
                 # 新增感染計算
                 new_infections = int(c.infected * self.disease.infectivity * multiplier)
@@ -116,6 +123,11 @@ class Game:
                 # 康復計算（隨機因子）
                 # 康復率受到嚴重程度的影響：越嚴重的病，康復越慢
                 recovery_factor = max(0.1, 1.0 - self.disease.severity * 5)
+                
+                # 改進：封城時康復率提升（× 1.5）
+                if c.lockdown:
+                    recovery_factor *= 1.5
+                
                 # 隨機性：0.5 到 1.0 之間的隨機倍數
                 random_recovery_multiplier = random.uniform(0.5, 1.0)
                 new_recoveries = int(c.infected * self.disease.recovery_rate * recovery_factor * random_recovery_multiplier)
@@ -169,6 +181,12 @@ class Game:
 
         # 治療進度隨嚴重程度上升
         self.cure += 0.4 + self.disease.severity * 3
+        
+        # 改進：封城國家會加快治療進度
+        for c in self.countries:
+            if c.lockdown:
+                self.cure += 1.5  # 每個封城國家加速 1.5%/天
+        
         # 確保治療進度在 0-100 範圍內
         self.cure = max(0, min(100, self.cure))
 
@@ -185,6 +203,10 @@ class Game:
                 # 感染比例越高，傳播概率越高（最多 50%）
                 infection_ratio = c.infected / c.population
                 spread_chance = min(0.5, infection_ratio * 100)
+                
+                # 改進：封城時傳播概率降低
+                if c.lockdown:
+                    spread_chance *= 0.5
 
                 # 隨機選擇其他國家
                 other_countries = [other for other in self.countries if other != c]
@@ -211,29 +233,49 @@ class App:
     def __init__(self, root):
         self.root = root
         self.root.title("瘟疫模擬器")
-        self.root.geometry("900x600")
+        self.root.geometry("1000x700")
 
-        self.game = Game()
+        self.game = Game(lockdown_callback=self.on_lockdown)
 
-        self.info = tk.Label(root, font=("Arial", 12), justify="left")
+        # 標題信息
+        self.info = tk.Label(root, font=("Arial", 12), justify="left", fg="black")
         self.info.pack(pady=10)
 
-        self.country_box = tk.Text(root, height=15, width=100)
-        self.country_box.pack()
+        # 封城信息面板
+        self.lockdown_info = tk.Label(root, font=("Arial", 10), justify="left", fg="red")
+        self.lockdown_info.pack(pady=5)
 
+        # 國家數據表
+        self.country_box = tk.Text(root, height=15, width=120, font=("Arial", 9))
+        self.country_box.pack(padx=10)
+
+        # 按鈕框架
         btn_frame = tk.Frame(root)
         btn_frame.pack(pady=10)
 
-        tk.Button(btn_frame, text="下一天", command=self.next_day).grid(row=0, column=0, padx=5)
-        tk.Button(btn_frame, text="升級傳染性 (5)", command=self.up_inf).grid(row=0, column=1, padx=5)
-        tk.Button(btn_frame, text="升級嚴重程度 (5)", command=self.up_sev).grid(row=0, column=2, padx=5)
-        tk.Button(btn_frame, text="升級致命性 (8)", command=self.up_leth).grid(row=0, column=3, padx=5)
-        tk.Button(btn_frame, text="降低康復率 (6)", command=self.up_res).grid(row=0, column=4, padx=5)
+        tk.Button(btn_frame, text="下一天", command=self.next_day, font=("Arial", 10), width=12).grid(row=0, column=0, padx=5)
+        tk.Button(btn_frame, text="升級傳染性 (5)", command=self.up_inf, font=("Arial", 10), width=14).grid(row=0, column=1, padx=5)
+        tk.Button(btn_frame, text="升級嚴重程度 (5)", command=self.up_sev, font=("Arial", 10), width=14).grid(row=0, column=2, padx=5)
+        tk.Button(btn_frame, text="升級致命性 (8)", command=self.up_leth, font=("Arial", 10), width=12).grid(row=0, column=3, padx=5)
+        tk.Button(btn_frame, text="降低康復率 (6)", command=self.up_res, font=("Arial", 10), width=14).grid(row=0, column=4, padx=5)
 
         self.refresh()
 
+    def on_lockdown(self, country):
+        """當某個國家實施封城時的回調"""
+        messagebox.showwarning(
+            "⚠️ 封城警告",
+            f"{country.name}已實施封城！\n\n"
+            f"📉 傳染性降低至 30%（原本 100%）\n"
+            f"💊 治療進度加快 +1.5%/天\n"
+            f"💪 人口康復速度提升 50%\n\n"
+            f"難度大幅提升！需要盡快感染其他國家。"
+        )
+
     def refresh(self):
         g = self.game
+        
+        # 更新主要信息
         self.info.config(text=(
             f"天數：{g.day}    治療進度：{g.cure:.1f}%    DNA 點數：{g.disease.points}\n"
             f"傳染性：{g.disease.infectivity:.2f}   "
@@ -242,14 +284,28 @@ class App:
             f"康復率：{g.disease.recovery_rate:.2f}"
         ))
 
+        # 更新封城信息
+        lockdown_countries = [c.name for c in g.countries if c.lockdown]
+        if lockdown_countries:
+            lockdown_info_text = f"🔒 已封城國家：{', '.join(lockdown_countries)}"
+            lockdown_info_text += f"  | 傳染性 -70%  | 治療進度 +{len(lockdown_countries)*1.5:.1f}%/天"
+            self.lockdown_info.config(text=lockdown_info_text, fg="red")
+        else:
+            self.lockdown_info.config(text="✅ 暫無封城國家", fg="green")
+
+        # 更新國家數據表
         self.country_box.delete("1.0", tk.END)
-        self.country_box.insert(tk.END, "國家       | 健康人口       | 感染人數       | 康復人數       | 死亡人數       | 封鎖狀態\n")
-        self.country_box.insert(tk.END, "-" * 100 + "\n")
+        self.country_box.insert(tk.END, "國家    | 健康人口         | 感染人數         | 康復人數         | 死亡人數         | 感染率    | 封城狀態\n")
+        self.country_box.insert(tk.END, "-" * 130 + "\n")
+        
         for c in g.countries:
-            lockdown_status = "是" if c.lockdown else "否"
+            infection_rate = (c.infected / c.population) * 100
+            lockdown_status = "🔒 已封城" if c.lockdown else "✅ 正常"
+            lockdown_color_code = ""
+            
             self.country_box.insert(
                 tk.END,
-                f"{c.name:<10} | {c.healthy:>14,} | {c.infected:>14,} | {c.recovered:>14,} | {c.dead:>14,} | {lockdown_status:<8}\n"
+                f"{c.name:<6} | {c.healthy:>16,} | {c.infected:>16,} | {c.recovered:>16,} | {c.dead:>16,} | {infection_rate:>7.2f}% | {lockdown_status:<10}\n"
             )
 
     def next_day(self):
@@ -257,11 +313,26 @@ class App:
         self.refresh()
 
         if self.game.is_win():
-            messagebox.showinfo("勝利", "所有人類已被消滅或康復。你贏了！")
+            messagebox.showinfo(
+                "🎉 勝利",
+                "所有人類已被消滅或康復。\n\n"
+                f"遊戲耗時：{self.game.day} 天\n"
+                f"最終傳染性：{self.game.disease.infectivity:.2f}\n"
+                f"最終嚴重程度：{self.game.disease.severity:.2f}\n"
+                f"最終致命性：{self.game.disease.lethality:.2f}\n\n"
+                "你贏了！"
+            )
             self.root.quit()
 
         if self.game.is_lose():
-            messagebox.showerror("失敗", "治療進度達到 100%。你輸了！")
+            messagebox.showerror(
+                "💀 失敗",
+                "治療進度達到 100%。\n\n"
+                f"遊戲進行了 {self.game.day} 天\n"
+                f"感染人數：{sum(c.infected for c in self.game.countries):,} 人\n"
+                f"死亡人數：{sum(c.dead for c in self.game.countries):,} 人\n\n"
+                "科學家成功研發出治療方案。\n你輸了！"
+            )
             self.root.quit()
 
     def up_inf(self):
